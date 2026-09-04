@@ -73,6 +73,7 @@ const workerTriggerState = {
 };
 const inputState = {
   image: null,
+  landmarks: null,
   cameraX: 0.5,
   normX: 0.5,
   normY: 0.5,
@@ -537,6 +538,7 @@ function onResults(results) {
   inputState.image = results.image;
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const landmarks = results.multiHandLandmarks[0];
+    inputState.landmarks = landmarks;
     const indexTip = landmarks[8];
     
     const rawX = indexTip.x;
@@ -558,6 +560,8 @@ function onResults(results) {
     inputState.normX = smoothedX;
     inputState.normY = smoothedY;
     inputState.cameraX = rawX;
+  } else {
+    inputState.landmarks = null;
   }
 }
 
@@ -1012,6 +1016,68 @@ function drawGameOverScreen(ctx) {
 // -------------------------------------------------------------
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
+const HAND_BONES = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [0, 9], [9, 10], [10, 11], [11, 12],
+  [0, 13], [13, 14], [14, 15], [15, 16],
+  [0, 17], [17, 18], [18, 19], [19, 20],
+  [5, 9], [9, 13], [13, 17]
+];
+
+function drawHandSkeleton(ctx, landmarks, now) {
+  if (!landmarks || landmarks.length < 21) return;
+
+  const pulse = 0.7 + Math.sin(now * 0.006) * 0.3;
+  const points = landmarks.map(point => ({
+    x: point.x * cameraCanvas.width,
+    y: point.y * cameraCanvas.height
+  }));
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // A wide glow under the topology gives the tracking pass a holographic edge.
+  ctx.shadowColor = `rgba(34, 211, 238, ${0.55 + pulse * 0.2})`;
+  ctx.shadowBlur = 13;
+  ctx.strokeStyle = `rgba(34, 211, 238, ${0.35 + pulse * 0.2})`;
+  ctx.lineWidth = 5;
+  HAND_BONES.forEach(([start, end]) => {
+    ctx.beginPath();
+    ctx.moveTo(points[start].x, points[start].y);
+    ctx.lineTo(points[end].x, points[end].y);
+    ctx.stroke();
+  });
+
+  ctx.shadowBlur = 4;
+  ctx.strokeStyle = '#b9f7ff';
+  ctx.lineWidth = 1.7;
+  HAND_BONES.forEach(([start, end]) => {
+    ctx.beginPath();
+    ctx.moveTo(points[start].x, points[start].y);
+    ctx.lineTo(points[end].x, points[end].y);
+    ctx.stroke();
+  });
+
+  points.forEach((point, index) => {
+    const radius = index === 0 ? 5.5 : (index === 8 ? 5 : 3.2);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius + 3 * pulse, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(34, 211, 238, ${0.12 + pulse * 0.1})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = index === 8 ? '#ffffff' : '#67e8f9';
+    ctx.fill();
+    ctx.strokeStyle = '#083344';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  ctx.restore();
+}
+
 function drawLeftPivotCircle(ctx, normX, normY, isFiring) {
   const canvasX = normX * cameraCanvas.width;
   const canvasY = normY * cameraCanvas.height;
@@ -1077,6 +1143,7 @@ function renderFrame() {
     cameraCtx.save();
     cameraCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
     cameraCtx.drawImage(inputState.image, 0, 0, cameraCanvas.width, cameraCanvas.height);
+    drawHandSkeleton(cameraCtx, inputState.landmarks, performance.now());
     drawLeftPivotCircle(cameraCtx, inputState.cameraX, inputState.normY, isFiringState);
     cameraCtx.restore();
   }

@@ -1130,22 +1130,41 @@ function renderFrame() {
 
 requestAnimationFrame(renderFrame);
 
-// Start Camera
-const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    const now = performance.now();
-    if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
-      lastInferenceTime = now;
-      await hands.send({ image: videoElement });
+function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (statusText) {
+      statusText.innerText = 'Camera Error: This browser does not support webcam access.';
+      statusText.style.color = '#ef4444';
     }
-  },
-  width: 320,
-  height: 240
-});
-
-camera.start().catch((err) => {
-  if (statusText) {
-    statusText.innerText = `Camera Error: ${err.message}`;
-    statusText.style.color = "#ef4444";
+    return;
   }
-});
+
+  if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    if (statusText) {
+      statusText.innerText = 'Camera Error: Open this page through http://localhost or https for webcam access.';
+      statusText.style.color = '#ef4444';
+    }
+    return;
+  }
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      const now = performance.now();
+      if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
+        lastInferenceTime = now;
+        await hands.send({ image: videoElement });
+      }
+    },
+    width: 320,
+    height: 240
+  });
+
+  camera.start().catch((err) => {
+    if (statusText) {
+      statusText.innerText = `Camera Error: ${err.message}`;
+      statusText.style.color = '#ef4444';
+    }
+  });
+}
+
+startCamera();

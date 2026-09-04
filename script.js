@@ -28,7 +28,6 @@ const triggerStateEl = document.getElementById('trigger_state');
 const scoreDisplayEl = document.getElementById('score_display');
 const timeDisplayEl = document.getElementById('time_display');
 const statusText = document.getElementById('status');
-const cameraStatusEl = document.getElementById('camera_status');
 const gameOverActionsEl = document.getElementById('game_over_actions');
 const replayButton = document.getElementById('replay_button');
 const menuButton = document.getElementById('menu_button');
@@ -74,7 +73,7 @@ const workerTriggerState = {
 };
 const inputState = {
   image: null,
-  landmarks: null,
+  handLandmarks: null,
   cameraX: 0.5,
   normX: 0.5,
   normY: 0.5,
@@ -136,13 +135,6 @@ function updateTimerDisplay() {
   if (timeDisplayEl) {
     timeDisplayEl.textContent = formatted;
   }
-}
-
-function setCameraStatus(message, state = '') {
-  if (!cameraStatusEl) return;
-  cameraStatusEl.textContent = message;
-  cameraStatusEl.classList.toggle('is-ready', state === 'ready');
-  cameraStatusEl.classList.toggle('is-error', state === 'error');
 }
 
 // Reticle Smoothing & Anti-Jitter Variables
@@ -538,16 +530,18 @@ hands.setOptions({
 hands.onResults(onResults);
 
 function onResults(results) {
-  setCameraStatus('Tracking active', 'ready');
   if (statusText && statusText.innerText.includes("Initializing")) {
     statusText.innerText = "Status: Tracking Active ⚡";
     statusText.style.color = "#22c55e";
   }
 
   inputState.image = results.image;
+  inputState.handLandmarks = null;
+
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const landmarks = results.multiHandLandmarks[0];
-    inputState.landmarks = landmarks;
+    inputState.handLandmarks = landmarks;
+
     const indexTip = landmarks[8];
     
     const rawX = indexTip.x;
@@ -569,8 +563,6 @@ function onResults(results) {
     inputState.normX = smoothedX;
     inputState.normY = smoothedY;
     inputState.cameraX = rawX;
-  } else {
-    inputState.landmarks = null;
   }
 }
 
@@ -1090,17 +1082,19 @@ function renderFrame() {
     cameraCtx.save();
     cameraCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
     cameraCtx.drawImage(inputState.image, 0, 0, cameraCanvas.width, cameraCanvas.height);
-    if (inputState.landmarks) {
-      drawConnectors(cameraCtx, inputState.landmarks, HAND_CONNECTIONS, {
-        color: '#00FF00',
-        lineWidth: 2
+
+    if (inputState.handLandmarks) {
+      drawConnectors(cameraCtx, inputState.handLandmarks, HAND_CONNECTIONS, {
+        color: '#34d399',
+        lineWidth: 3
       });
-      drawLandmarks(cameraCtx, inputState.landmarks, {
-        color: '#FF0000',
+      drawLandmarks(cameraCtx, inputState.handLandmarks, {
+        color: '#f8fafc',
         lineWidth: 1,
         radius: 3
       });
     }
+
     drawLeftPivotCircle(cameraCtx, inputState.cameraX, inputState.normY, isFiringState);
     cameraCtx.restore();
   }
@@ -1137,51 +1131,21 @@ function renderFrame() {
 requestAnimationFrame(renderFrame);
 
 // Start Camera
-async function startCamera() {
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    const message = 'Camera requires HTTPS (or localhost)';
-    setCameraStatus(message, 'error');
-    if (statusText) statusText.innerText = `Camera Error: ${message}`;
-    return;
-  }
-
-  setCameraStatus('Allow camera access to begin');
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' }
-    });
-    videoElement.srcObject = stream;
-    await videoElement.play();
-    setCameraStatus('Camera active - calibrating');
-
-    let inferenceInFlight = false;
-    const processVideoFrame = async () => {
-      const now = performance.now();
-      if (!inferenceInFlight && now - lastInferenceTime >= INFERENCE_INTERVAL) {
-        inferenceInFlight = true;
-        lastInferenceTime = now;
-        try {
-          await hands.send({ image: videoElement });
-        } catch (err) {
-          setCameraStatus(`Tracking error: ${err?.message || 'MediaPipe unavailable'}`, 'error');
-        } finally {
-          inferenceInFlight = false;
-        }
-      }
-      requestAnimationFrame(processVideoFrame);
-    };
-    requestAnimationFrame(processVideoFrame);
-  } catch (err) {
-    const message = err?.name === 'NotAllowedError'
-      ? 'Camera permission was blocked. Allow it and reload.'
-      : `Camera unavailable: ${err?.message || 'unknown error'}`;
-    setCameraStatus(message, 'error');
-    if (statusText) {
-      statusText.innerText = `Camera Error: ${message}`;
-      statusText.style.color = '#ef4444';
+const camera = new Camera(videoElement, {
+  onFrame: async () => {
+    const now = performance.now();
+    if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
+      lastInferenceTime = now;
+      await hands.send({ image: videoElement });
     }
-  }
-}
+  },
+  width: 320,
+  height: 240
+});
 
-startCamera();
+camera.start().catch((err) => {
+  if (statusText) {
+    statusText.innerText = `Camera Error: ${err.message}`;
+    statusText.style.color = "#ef4444";
+  }
+});

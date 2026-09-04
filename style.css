@@ -95,6 +95,70 @@ body:not(.battle-layout-body) {
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
 }
 
+.tracking-readout {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: 5px;
+  color: #083344;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.tracking-readout-top {
+  top: 22px;
+  right: 22px;
+  text-align: right;
+}
+
+.tracking-readout-bottom {
+  left: 20px;
+  bottom: 96px;
+  padding-left: 11px;
+  border-left: 2px solid rgba(8, 145, 178, 0.65);
+}
+
+.tracking-readout .readout-kicker {
+  color: #0e7490;
+  font-size: 0.5rem;
+}
+
+.tracking-readout strong {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: #164e63;
+  font-size: 0.72rem;
+}
+
+.tracking-readout strong i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px #22c55e;
+}
+
+.tracking-readout b {
+  color: #0369a1;
+  font-weight: 800;
+}
+
+.camera-scanline {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.23;
+  background: repeating-linear-gradient(0deg, transparent 0 5px, rgba(8, 145, 178, 0.13) 6px);
+  mix-blend-mode: multiply;
+}
+
 .game-hud {
   position: absolute;
   top: 18px;

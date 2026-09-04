@@ -28,6 +28,7 @@ const triggerStateEl = document.getElementById('trigger_state');
 const scoreDisplayEl = document.getElementById('score_display');
 const timeDisplayEl = document.getElementById('time_display');
 const statusText = document.getElementById('status');
+const cameraStatusEl = document.getElementById('camera_status');
 const gameOverActionsEl = document.getElementById('game_over_actions');
 const replayButton = document.getElementById('replay_button');
 const menuButton = document.getElementById('menu_button');
@@ -135,6 +136,13 @@ function updateTimerDisplay() {
   if (timeDisplayEl) {
     timeDisplayEl.textContent = formatted;
   }
+}
+
+function setCameraStatus(message, state = '') {
+  if (!cameraStatusEl) return;
+  cameraStatusEl.textContent = message;
+  cameraStatusEl.classList.toggle('is-ready', state === 'ready');
+  cameraStatusEl.classList.toggle('is-error', state === 'error');
 }
 
 // Reticle Smoothing & Anti-Jitter Variables
@@ -530,6 +538,7 @@ hands.setOptions({
 hands.onResults(onResults);
 
 function onResults(results) {
+  setCameraStatus('Tracking active', 'ready');
   if (statusText && statusText.innerText.includes("Initializing")) {
     statusText.innerText = "Status: Tracking Active ⚡";
     statusText.style.color = "#22c55e";
@@ -1180,21 +1189,51 @@ function renderFrame() {
 requestAnimationFrame(renderFrame);
 
 // Start Camera
-const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    const now = performance.now();
-    if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
-      lastInferenceTime = now;
-      await hands.send({ image: videoElement });
-    }
-  },
-  width: 320,
-  height: 240
-});
-
-camera.start().catch((err) => {
-  if (statusText) {
-    statusText.innerText = `Camera Error: ${err.message}`;
-    statusText.style.color = "#ef4444";
+async function startCamera() {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    const message = 'Camera requires HTTPS (or localhost)';
+    setCameraStatus(message, 'error');
+    if (statusText) statusText.innerText = `Camera Error: ${message}`;
+    return;
   }
-});
+
+  setCameraStatus('Allow camera access to begin');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' }
+    });
+    videoElement.srcObject = stream;
+    await videoElement.play();
+    setCameraStatus('Camera active - calibrating');
+
+    let inferenceInFlight = false;
+    const processVideoFrame = async () => {
+      const now = performance.now();
+      if (!inferenceInFlight && now - lastInferenceTime >= INFERENCE_INTERVAL) {
+        inferenceInFlight = true;
+        lastInferenceTime = now;
+        try {
+          await hands.send({ image: videoElement });
+        } catch (err) {
+          setCameraStatus(`Tracking error: ${err?.message || 'MediaPipe unavailable'}`, 'error');
+        } finally {
+          inferenceInFlight = false;
+        }
+      }
+      requestAnimationFrame(processVideoFrame);
+    };
+    requestAnimationFrame(processVideoFrame);
+  } catch (err) {
+    const message = err?.name === 'NotAllowedError'
+      ? 'Camera permission was blocked. Allow it and reload.'
+      : `Camera unavailable: ${err?.message || 'unknown error'}`;
+    setCameraStatus(message, 'error');
+    if (statusText) {
+      statusText.innerText = `Camera Error: ${message}`;
+      statusText.style.color = '#ef4444';
+    }
+  }
+}
+
+startCamera();

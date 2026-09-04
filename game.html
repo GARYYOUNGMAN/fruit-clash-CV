@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hand Tracking - Fruit Shooter 2D</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <link rel="icon" href="https://static.vecteezy.com/system/resources/previews/021/024/064/non_2x/shooting-game-icon-vector.jpg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="battle-layout">
+    <section class="camera-pane" aria-label="Camera feed area">
+      <div class="camera-panel-glow"></div>
+      <div class="camera-badge">LIVE FEED</div>
+      <canvas id="camera_canvas" width="640" height="480"></canvas>
+    </section>
+
+    <section class="game-pane" aria-label="Game arena">
+      <div class="game-hud">
+        <div class="hud-left">
+          <span class="hud-tag">BATTLE</span>
+          <span class="hud-title">FRUIT CLASH</span>
+        </div>
+
+        <div class="hud-right">
+          <div class="stat-box">
+            <span>Score</span>
+            <strong id="score_display">0</strong>
+          </div>
+          <div class="stat-box">
+            <span>Time</span>
+            <strong id="time_display">02:00</strong>
+          </div>
+        </div>
+      </div>
+
+      <button class="close-button" aria-label="Close game">×</button>
+
+      <div class="mission-panel">
+        <div class="mission-badge">READY</div>
+        <div class="mission-text">Use your hand to slice the targets</div>
+      </div>
+
+      <div id="game_over_actions" class="game-over-actions hidden">
+        <button id="replay_button" class="game-over-btn btn-primary">Replay</button>
+        <button id="menu_button" class="game-over-btn btn-secondary">Back to Menu</button>
+      </div>
+
+      <canvas id="game_canvas" width="640" height="480"></canvas>
+    </section>
+  </main>
+
+  <video id="input_video" style="display: none;" playsinline></video>
+  <p id="status" class="hidden-status">Status: Initializing camera & tracking system...</p>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>

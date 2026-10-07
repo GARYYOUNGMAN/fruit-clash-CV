@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101a21">
+  <title>Fruit Clash | Leaderboard</title>
+  <link rel="icon" href="assets/durian.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="leaderboard-body">
+  <main class="leaderboard-page">
+    <header class="leaderboard-header">
+      <a class="leaderboard-brand" href="index.html">FRUIT CLASH</a>
+      <nav class="leaderboard-nav" aria-label="Main navigation">
+        <a href="index.html">Menu</a>
+        <a href="game.html">Play</a>
+      </nav>
+    </header>
+
+    <section class="leaderboard-hero" aria-labelledby="leaderboard-heading">
+      <div>
+        <p class="leaderboard-kicker">ARCADE RECORDS</p>
+        <h1 id="leaderboard-heading">Hall of<br>Fame</h1>
+        <p>Every run counts. Put your name on the board and chase the top spot.</p>
+      </div>
+      <img class="leaderboard-mascot" src="assets/durian.png" alt="Durian boss">
+    </section>
+
+    <form id="score-form" class="score-form">
+      <label>
+        Player name
+        <input id="player-name" name="name" type="text" maxlength="24" autocomplete="nickname" placeholder="Enter a name" required>
+      </label>
+      <label>
+        Points
+        <input id="player-score" name="score" type="number" min="0" max="999999999" step="1" placeholder="0" required>
+      </label>
+      <label>
+        Finish time (seconds)
+        <input id="player-time" name="time" type="number" min="0" max="999999999" step="1" placeholder="0" required>
+      </label>
+      <label>
+        Boss result
+        <select id="player-boss-result" name="bossResult">
+          <option value="NOT_REACHED">Not reached</option>
+          <option value="WON">Boss defeated</option>
+          <option value="LOST">Lost to boss</option>
+        </select>
+      </label>
+      <button type="submit">Save score</button>
+    </form>
+    <p id="leaderboard-status" class="leaderboard-status" role="status" aria-live="polite"></p>
+
+    <section class="leaderboard-section" aria-labelledby="standings-heading">
+      <div class="leaderboard-title-row">
+        <h2 id="standings-heading">Top players</h2>
+        <span id="leaderboard-count" class="leaderboard-count">0 records</span>
+      </div>
+      <div id="podium" class="podium" aria-label="Top three players">
+        <article class="podium-entry" data-place="2">
+          <span class="podium-rank">2ND PLACE</span>
+          <strong class="podium-name">Waiting for a player</strong>
+          <span class="podium-score">--</span>
+          <span class="podium-time">--</span>
+          <span class="podium-result"></span>
+        </article>
+        <article class="podium-entry" data-place="1">
+          <span class="podium-rank">1ST PLACE</span>
+          <strong class="podium-name">Waiting for a player</strong>
+          <span class="podium-score">--</span>
+          <span class="podium-time">--</span>
+          <span class="podium-result"></span>
+        </article>
+        <article class="podium-entry" data-place="3">
+          <span class="podium-rank">3RD PLACE</span>
+          <strong class="podium-name">Waiting for a player</strong>
+          <span class="podium-score">--</span>
+          <span class="podium-time">--</span>
+          <span class="podium-result"></span>
+        </article>
+      </div>
+      <div id="leaderboard-list" class="leaderboard-list" aria-label="Other player rankings"></div>
+      <p id="leaderboard-empty" class="leaderboard-empty">No saved scores yet. Be the first to make the board.</p>
+    </section>
+  </main>
+  <script type="module" src="leaderboard.js"></script>
+</body>
+</html>

@@ -867,6 +867,31 @@ body:not(.battle-layout-body) {
   font-size: 0.8rem;
 }
 
+.leaderboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.leaderboard-reset {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 4px;
+  background: transparent;
+  color: #fca5a5;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.leaderboard-reset:hover {
+  border-color: #f87171;
+  background: rgba(127, 29, 29, 0.22);
+  color: #fecaca;
+}
+
 .podium {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

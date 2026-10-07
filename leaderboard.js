@@ -11,6 +11,7 @@ const status = document.getElementById('leaderboard-status');
 const count = document.getElementById('leaderboard-count');
 const list = document.getElementById('leaderboard-list');
 const emptyState = document.getElementById('leaderboard-empty');
+const resetButton = document.getElementById('reset-leaderboard');
 const podiumEntries = [...document.querySelectorAll('.podium-entry')];
 
 function loadScores() {
@@ -25,6 +26,10 @@ function loadScores() {
 }
 
 function compareScores(first, second) {
+  const resultRank = { WON: 0, LOST: 1, NOT_REACHED: 2 };
+  const firstResultRank = resultRank[first.bossResult] ?? 3;
+  const secondResultRank = resultRank[second.bossResult] ?? 3;
+  if (firstResultRank !== secondResultRank) return firstResultRank - secondResultRank;
   if (first.score !== second.score) return second.score - first.score;
   const firstTime = Number.isSafeInteger(first.timeSeconds) ? first.timeSeconds : null;
   const secondTime = Number.isSafeInteger(second.timeSeconds) ? second.timeSeconds : null;
@@ -136,6 +141,22 @@ form.addEventListener('submit', event => {
     renderScores();
   } catch {
     status.textContent = 'Could not save this score in browser storage.';
+  }
+});
+
+resetButton.addEventListener('click', () => {
+  if (!loadScores().length) {
+    status.textContent = 'The leaderboard is already empty.';
+    return;
+  }
+  if (!window.confirm('Reset the leaderboard and delete all saved player records?')) return;
+
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    renderScores();
+    status.textContent = 'Leaderboard reset. All saved player records were deleted.';
+  } catch {
+    status.textContent = 'Could not reset the leaderboard in browser storage.';
   }
 });
 

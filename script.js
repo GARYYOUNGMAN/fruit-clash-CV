@@ -111,7 +111,7 @@ let stainCount = 0;
 let lastInferenceTime = 0;
 const INFERENCE_INTERVAL = 1000 / 30; // ~33ms
 
-const GAME_DURATION = 120; // 2 minutes in seconds
+const GAME_DURATION = 45; // 2 minutes in seconds
 let timeRemaining = GAME_DURATION;
 let isGameOver = false;
 let gameTimerInterval = null;

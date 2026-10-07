@@ -1031,7 +1031,7 @@ function renderGameSpace(normX, normY, isShotFired, isHoldingThisFrame, activeFi
 
         if (t.type === 'BOMB') {
           targetStats.BOMB++;
-          score -=20;
+          score -=40;
         } else {
           targetStats[t.type]++;
           switch (t.type) {

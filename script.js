@@ -30,6 +30,7 @@ const timeDisplayEl = document.getElementById('time_display');
 const statusText = document.getElementById('status');
 const gameOverActionsEl = document.getElementById('game_over_actions');
 const replayButton = document.getElementById('replay_button');
+const saveScoreButton = document.getElementById('save_score_button');
 const menuButton = document.getElementById('menu_button');
 const closeButton = document.querySelector('.close-button');
 const missionBadgeEl = document.querySelector('.mission-badge');
@@ -73,7 +74,7 @@ const workerTriggerState = {
 };
 const inputState = {
   image: null,
-  landmarks: null,
+  handLandmarks: null,
   cameraX: 0.5,
   normX: 0.5,
   normY: 0.5,
@@ -111,21 +112,29 @@ let stainCount = 0;
 let lastInferenceTime = 0;
 const INFERENCE_INTERVAL = 1000 / 30; // ~33ms
 
-const GAME_DURATION = 45; // 2 minutes in seconds
+const GAME_DURATION = 45; // 45 seconds
 let timeRemaining = GAME_DURATION;
 let isGameOver = false;
 let gameTimerInterval = null;
+let runStartedAt = 0;
+let firstLevelElapsedMs = 0;
+let bossStartedAt = 0;
+let completedElapsedSeconds = null;
 let finalMatchActive = false;
+let bossUnlocked = false;
 let finalMatchResult = null;
 let bossHealth = 100;
 let playerHealth = 100;
 let bossSpawnTimer = 0;
+let bossVolleyStep = 0;
+let bossOrbitTimer = 360;
+let bossOrbitPause = 0;
 let bossPulse = 0;
 const bossHazards = [];
 const bossSmoke = [];
 const BOSS_MAX_HEALTH = 100;
 const PLAYER_MAX_HEALTH = 100;
-const FINAL_MATCH_SCORE = 2000;
+const FINAL_MATCH_SCORE = 1000;
 
 function updateTimerDisplay() {
   const minutes = Math.floor(timeRemaining / 60);
@@ -135,6 +144,15 @@ function updateTimerDisplay() {
   if (timeDisplayEl) {
     timeDisplayEl.textContent = formatted;
   }
+}
+
+function formatElapsedTime(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 // Reticle Smoothing & Anti-Jitter Variables
@@ -239,10 +257,18 @@ function resetGameState() {
   isFiringState = false;
   isGameOver = false;
   finalMatchActive = false;
+  bossUnlocked = false;
   finalMatchResult = null;
+  runStartedAt = 0;
+  firstLevelElapsedMs = 0;
+  bossStartedAt = 0;
+  completedElapsedSeconds = null;
   bossHealth = BOSS_MAX_HEALTH;
   playerHealth = PLAYER_MAX_HEALTH;
   bossSpawnTimer = 0;
+  bossVolleyStep = 0;
+  bossOrbitTimer = 360;
+  bossOrbitPause = 0;
   bossPulse = 0;
   bossHazards.length = 0;
   bossSmoke.length = 0;
@@ -262,9 +288,14 @@ function enterFinalMatch() {
   if (finalMatchActive || isGameOver) return;
 
   finalMatchActive = true;
+  if (!bossUnlocked) firstLevelElapsedMs = Math.max(0, Date.now() - runStartedAt);
+  bossStartedAt = Date.now();
   bossHealth = BOSS_MAX_HEALTH;
   playerHealth = PLAYER_MAX_HEALTH;
   bossSpawnTimer = 0;
+  bossVolleyStep = 0;
+  bossOrbitTimer = 300 + Math.random() * 180;
+  bossOrbitPause = 0;
   bossPulse = 0;
   bossHazards.length = 0;
   bossSmoke.length = 0;
@@ -285,6 +316,10 @@ function startTimer() {
   if (gameTimerInterval) clearInterval(gameTimerInterval);
   timeRemaining = GAME_DURATION;
   isGameOver = false;
+  runStartedAt = Date.now();
+  firstLevelElapsedMs = 0;
+  bossStartedAt = 0;
+  completedElapsedSeconds = null;
   updateTimerDisplay();
 
   gameTimerInterval = setInterval(() => {
@@ -295,10 +330,16 @@ function startTimer() {
 
     if (timeRemaining <= 0) {
       timeRemaining = 0;
-      isGameOver = true;
       updateTimerDisplay();
       clearInterval(gameTimerInterval);
-      if (gameOverActionsEl) gameOverActionsEl.classList.remove('hidden');
+      gameTimerInterval = null;
+      if (bossUnlocked) {
+        enterFinalMatch();
+      } else {
+        isGameOver = true;
+        completedElapsedSeconds = Math.ceil((Date.now() - runStartedAt) / 1000);
+        if (gameOverActionsEl) gameOverActionsEl.classList.remove('hidden');
+      }
     }
   }, 1000);
 }
@@ -313,6 +354,18 @@ if (replayButton) {
 if (menuButton) {
   menuButton.addEventListener('click', () => {
     window.location.href = 'index.html';
+  });
+}
+
+if (saveScoreButton) {
+  saveScoreButton.addEventListener('click', () => {
+    sessionStorage.setItem('fruitClashPendingScore', String(score));
+    sessionStorage.setItem('fruitClashPendingTime', String(completedElapsedSeconds ?? Math.ceil((Date.now() - runStartedAt) / 1000)));
+    const bossResult = finalMatchResult === 'VICTORY'
+      ? 'WON'
+      : finalMatchResult === 'DEFEAT' ? 'LOST' : 'NOT_REACHED';
+    sessionStorage.setItem('fruitClashPendingBossResult', bossResult);
+    window.location.href = 'leaderboard.html';
   });
 }
 
@@ -536,9 +589,12 @@ function onResults(results) {
   }
 
   inputState.image = results.image;
+  inputState.handLandmarks = null;
+
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const landmarks = results.multiHandLandmarks[0];
-    inputState.landmarks = landmarks;
+    inputState.handLandmarks = landmarks;
+
     const indexTip = landmarks[8];
     
     const rawX = indexTip.x;
@@ -560,8 +616,6 @@ function onResults(results) {
     inputState.normX = smoothedX;
     inputState.normY = smoothedY;
     inputState.cameraX = rawX;
-  } else {
-    inputState.landmarks = null;
   }
 }
 
@@ -613,28 +667,64 @@ function updateAndDrawEffects(ctx) {
   }
 }
 
-function spawnBossHazard(type) {
-  const angle = Math.random() * Math.PI * 2;
-  const distance = 70 + Math.random() * 55;
+function spawnBossHazard(type, targetX) {
   const bossPosition = getBossPosition();
-  const originX = bossPosition.x + Math.cos(angle) * distance;
-  const originY = bossPosition.y + Math.sin(angle) * distance * 0.55;
-  const targetX = gameCanvas.width / 2 + (Math.random() - 0.5) * 180;
-  const targetY = gameCanvas.height + 40;
-  const travel = 70 + Math.random() * 30;
+  const originX = bossPosition.x;
+  const originY = bossPosition.y + 48;
+  const radius = type === 'BOMB' ? 31 : 24;
+  const laneIndex = Math.round(targetX / gameCanvas.width * 2);
 
-  bossHazards.push({
+  const hazard = {
     type,
     x: originX,
     y: originY,
-    vx: (targetX - originX) / travel,
-    vy: type === 'BOMB' ? -(4 + Math.random() * 3) : -(5 + Math.random() * 2),
-    gravity: 0.16,
+    vx: 0,
+    vy: 0,
+    gravity: 0,
     bounceCount: 0,
-    radius: type === 'BOMB' ? 31 : 24,
-    angle: Math.random() * Math.PI * 2,
-    rotationSpeed: (Math.random() - 0.5) * 0.15
-  });
+    radius,
+    angle: 0,
+    rotationSpeed: laneIndex % 2 === 0 ? 0.035 : -0.035,
+    orbiting: false
+  };
+  launchBossHazard(hazard, targetX);
+  bossHazards.push(hazard);
+}
+
+function launchBossHazard(hazard, targetX) {
+  const targetY = gameCanvas.height - hazard.radius - 8;
+  const travel = 105;
+  hazard.gravity = 0.2;
+  hazard.vx = (targetX - hazard.x) / travel;
+  hazard.vy = (targetY - hazard.y - hazard.gravity * travel * (travel - 1) / 2) / travel;
+  hazard.orbiting = false;
+}
+
+function spawnBossOrbitBurst(laneTargets) {
+  const bombCount = 2 + Math.floor(Math.random() * 2);
+  const bossPosition = getBossPosition();
+  const firstLane = Math.floor(Math.random() * laneTargets.length);
+
+  for (let i = 0; i < bombCount; i++) {
+    bossHazards.push({
+      type: 'BOMB',
+      x: bossPosition.x,
+      y: bossPosition.y,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      bounceCount: 0,
+      radius: 31,
+      angle: 0,
+      rotationSpeed: 0.08,
+      orbiting: true,
+      orbitAngle: (Math.PI * 2 * i) / bombCount,
+      orbitSpeed: 0.055,
+      orbitAge: 0,
+      orbitDuration: 100 + i * 16,
+      orbitLane: (firstLane + i) % laneTargets.length
+    });
+  }
 }
 
 function getBossPosition() {
@@ -745,15 +835,31 @@ function drawDefeatLightning(ctx) {
 function drawFinalMatch(ctx, canvasX, canvasY, isShotFired) {
   bossPulse += 0.04;
   bossSpawnTimer++;
+  if (completedElapsedSeconds === null && timeDisplayEl) {
+    const totalElapsedSeconds = Math.floor((firstLevelElapsedMs + Date.now() - bossStartedAt) / 1000);
+    timeDisplayEl.textContent = formatElapsedTime(totalElapsedSeconds);
+  }
   updateBossSmoke();
   drawBossSmoke(ctx);
 
   if (finalMatchResult === null) {
-    if (bossSpawnTimer >= 22) {
+    const laneTargets = [gameCanvas.width * 0.2, gameCanvas.width * 0.5, gameCanvas.width * 0.8];
+    const spawnInterval = bossVolleyStep === 0 ? 90 : 24;
+    if (bossOrbitPause > 0) bossOrbitPause--;
+    if (bossOrbitTimer > 0) bossOrbitTimer--;
+    if (bossOrbitTimer <= 0 && bossOrbitPause === 0) {
+      spawnBossOrbitBurst(laneTargets);
+      bossOrbitPause = 150;
+      bossOrbitTimer = 360 + Math.random() * 240;
       bossSpawnTimer = 0;
-      const bombCount = Math.random() < 0.35 ? 2 : 1;
-      for (let i = 0; i < bombCount; i++) spawnBossHazard('BOMB');
-      if (Math.random() < 0.2) spawnBossHazard('FRUIT');
+      bossVolleyStep = 0;
+    }
+    if (bossOrbitPause === 0) bossSpawnTimer++;
+    if (bossOrbitPause === 0 && bossSpawnTimer >= spawnInterval) {
+      bossSpawnTimer = 0;
+      const hazardType = bossVolleyStep === 2 && Math.random() < 0.2 ? 'FRUIT' : 'BOMB';
+      spawnBossHazard(hazardType, laneTargets[bossVolleyStep]);
+      bossVolleyStep = (bossVolleyStep + 1) % laneTargets.length;
     }
 
     drawBoss(ctx);
@@ -762,9 +868,20 @@ function drawFinalMatch(ctx, canvasX, canvasY, isShotFired) {
 
     for (let i = bossHazards.length - 1; i >= 0; i--) {
       const hazard = bossHazards[i];
-      hazard.x += hazard.vx;
-      hazard.y += hazard.vy;
-      hazard.vy += hazard.gravity;
+      if (hazard.orbiting) {
+        const bossPosition = getBossPosition();
+        hazard.orbitAge++;
+        hazard.orbitAngle += hazard.orbitSpeed;
+        hazard.x = bossPosition.x + Math.cos(hazard.orbitAngle) * 120;
+        hazard.y = bossPosition.y + Math.sin(hazard.orbitAngle) * 96;
+        if (hazard.orbitAge >= hazard.orbitDuration) {
+          launchBossHazard(hazard, laneTargets[hazard.orbitLane]);
+        }
+      } else {
+        hazard.x += hazard.vx;
+        hazard.y += hazard.vy;
+        hazard.vy += hazard.gravity;
+      }
       hazard.angle += hazard.rotationSpeed;
       ctx.save();
       ctx.translate(hazard.x, hazard.y);
@@ -789,9 +906,14 @@ function drawFinalMatch(ctx, canvasX, canvasY, isShotFired) {
       }
       if (hazard.type === 'BOMB' && hazard.y + hazard.radius >= gameCanvas.height - 8 && hazard.vy > 0) {
         hazard.y = gameCanvas.height - hazard.radius - 8;
-        hazard.vy = -(Math.abs(hazard.vy) * 0.82 + 2.5);
-        hazard.vx *= 0.98;
-        hazard.bounceCount++;
+        if (hazard.bounceCount === 0) {
+          hazard.vy = -(Math.abs(hazard.vy) * 0.55 + 1.2);
+          hazard.vx *= 0.85;
+          hazard.bounceCount++;
+        } else {
+          bossHazards.splice(i, 1);
+          continue;
+        }
       }
       if (hazard.y > gameCanvas.height + 60) bossHazards.splice(i, 1);
     }
@@ -803,6 +925,9 @@ function drawFinalMatch(ctx, canvasX, canvasY, isShotFired) {
     }
     if (bossHealth <= 0) finalMatchResult = 'VICTORY';
     if (playerHealth <= 0) finalMatchResult = 'DEFEAT';
+    if (finalMatchResult && completedElapsedSeconds === null) {
+      completedElapsedSeconds = Math.ceil((firstLevelElapsedMs + Date.now() - bossStartedAt) / 1000);
+    }
     drawReticle(canvasX, canvasY, isFiringState);
   } else {
     drawBoss(ctx);
@@ -906,24 +1031,29 @@ function renderGameSpace(normX, normY, isShotFired, isHoldingThisFrame, activeFi
 
         if (t.type === 'BOMB') {
           targetStats.BOMB++;
-          score -=15;
+          score -=20;
         } else {
           targetStats[t.type]++;
           switch (t.type) {
             case 'POMEGRANATE':
             case 'BANANA':
-              score += 20;
+              score += 30;
               break;
             case 'APPLE':
             case 'ORANGE':
-              score += 10;
+              score += 20;
               break;
           }
         }
 
         if (scoreDisplayEl) scoreDisplayEl.textContent = score;
         recycleTarget(i);
-        if (score >= FINAL_MATCH_SCORE) enterFinalMatch();
+        if (!bossUnlocked && score >= FINAL_MATCH_SCORE) {
+          bossUnlocked = true;
+          firstLevelElapsedMs = Math.max(0, Date.now() - runStartedAt);
+          if (missionBadgeEl) missionBadgeEl.textContent = 'BOSS UNLOCKED';
+          if (missionTextEl) missionTextEl.textContent = 'Keep scoring until time runs out';
+        }
       }
     }
 
@@ -1016,68 +1146,6 @@ function drawGameOverScreen(ctx) {
 // -------------------------------------------------------------
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
-const HAND_BONES = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [0, 9], [9, 10], [10, 11], [11, 12],
-  [0, 13], [13, 14], [14, 15], [15, 16],
-  [0, 17], [17, 18], [18, 19], [19, 20],
-  [5, 9], [9, 13], [13, 17]
-];
-
-function drawHandSkeleton(ctx, landmarks, now) {
-  if (!landmarks || landmarks.length < 21) return;
-
-  const pulse = 0.7 + Math.sin(now * 0.006) * 0.3;
-  const points = landmarks.map(point => ({
-    x: point.x * cameraCanvas.width,
-    y: point.y * cameraCanvas.height
-  }));
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  // A wide glow under the topology gives the tracking pass a holographic edge.
-  ctx.shadowColor = `rgba(34, 211, 238, ${0.55 + pulse * 0.2})`;
-  ctx.shadowBlur = 13;
-  ctx.strokeStyle = `rgba(34, 211, 238, ${0.35 + pulse * 0.2})`;
-  ctx.lineWidth = 5;
-  HAND_BONES.forEach(([start, end]) => {
-    ctx.beginPath();
-    ctx.moveTo(points[start].x, points[start].y);
-    ctx.lineTo(points[end].x, points[end].y);
-    ctx.stroke();
-  });
-
-  ctx.shadowBlur = 4;
-  ctx.strokeStyle = '#b9f7ff';
-  ctx.lineWidth = 1.7;
-  HAND_BONES.forEach(([start, end]) => {
-    ctx.beginPath();
-    ctx.moveTo(points[start].x, points[start].y);
-    ctx.lineTo(points[end].x, points[end].y);
-    ctx.stroke();
-  });
-
-  points.forEach((point, index) => {
-    const radius = index === 0 ? 5.5 : (index === 8 ? 5 : 3.2);
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, radius + 3 * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(34, 211, 238, ${0.12 + pulse * 0.1})`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = index === 8 ? '#ffffff' : '#67e8f9';
-    ctx.fill();
-    ctx.strokeStyle = '#083344';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  });
-
-  ctx.restore();
-}
-
 function drawLeftPivotCircle(ctx, normX, normY, isFiring) {
   const canvasX = normX * cameraCanvas.width;
   const canvasY = normY * cameraCanvas.height;
@@ -1143,7 +1211,19 @@ function renderFrame() {
     cameraCtx.save();
     cameraCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
     cameraCtx.drawImage(inputState.image, 0, 0, cameraCanvas.width, cameraCanvas.height);
-    drawHandSkeleton(cameraCtx, inputState.landmarks, performance.now());
+
+    if (inputState.handLandmarks) {
+      drawConnectors(cameraCtx, inputState.handLandmarks, HAND_CONNECTIONS, {
+        color: '#34d399',
+        lineWidth: 3
+      });
+      drawLandmarks(cameraCtx, inputState.handLandmarks, {
+        color: '#f8fafc',
+        lineWidth: 1,
+        radius: 3
+      });
+    }
+
     drawLeftPivotCircle(cameraCtx, inputState.cameraX, inputState.normY, isFiringState);
     cameraCtx.restore();
   }
@@ -1179,22 +1259,41 @@ function renderFrame() {
 
 requestAnimationFrame(renderFrame);
 
-// Start Camera
-const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    const now = performance.now();
-    if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
-      lastInferenceTime = now;
-      await hands.send({ image: videoElement });
+function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (statusText) {
+      statusText.innerText = 'Camera Error: This browser does not support webcam access.';
+      statusText.style.color = '#ef4444';
     }
-  },
-  width: 320,
-  height: 240
-});
-
-camera.start().catch((err) => {
-  if (statusText) {
-    statusText.innerText = `Camera Error: ${err.message}`;
-    statusText.style.color = "#ef4444";
+    return;
   }
-});
+
+  if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    if (statusText) {
+      statusText.innerText = 'Camera Error: Open this page through http://localhost or https for webcam access.';
+      statusText.style.color = '#ef4444';
+    }
+    return;
+  }
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      const now = performance.now();
+      if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
+        lastInferenceTime = now;
+        await hands.send({ image: videoElement });
+      }
+    },
+    width: 320,
+    height: 240
+  });
+
+  camera.start().catch((err) => {
+    if (statusText) {
+      statusText.innerText = `Camera Error: ${err.message}`;
+      statusText.style.color = '#ef4444';
+    }
+  });
+}
+
+startCamera();
